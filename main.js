@@ -1,101 +1,173 @@
-window.onload = function () {
-  const supabaseUrl = 'https://iftehkxnwnhuugqtatzq.supabase.co';
-  const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmdGVoa3hud25odXVncXRhdHpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5MTY0MjQsImV4cCI6MjA2NjQ5MjQyNH0.pfEUmJTCd1aNKLplV_qZdQagR1ZlqliCxMamUy6egrg';  const client = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
-  const client = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
 
-  const gameState = {
-    room: null,
-    players: [],
-    isHost: false,
-    questions: [],
-    currentMinigame: null,
+// main.js — Full Game Logic for Trivia Murder Party
+
+const SUPABASE_URL = 'https://iftehkxnwnhuugqtatzq.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmdGVoa3hud25odXVncXRhdHpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5MTY0MjQsImV4cCI6MjA2NjQ5MjQyNH0.pfEUmJTCd1aNKLplV_qZdQagR1ZlqliCxMamUy6egrg';  const client = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let gameState = {
+  userId: null,
+  username: null,
+  roomCode: null,
+  isHost: false,
+  players: [],
+  currentQuestion: null,
+  phase: 'lobby',
+  minigame: null,
+  score: {},
+  winners: [],
+  losers: [],
+  round: 1,
+  totalRounds: 5,
+  backupQuestions: [],
+};
+
+// === Utility ===
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id)?.classList.add('active');
+}
+
+// === Room Management ===
+document.getElementById('createRoomBtn').onclick = async () => {
+  gameState.username = prompt('Enter a username');
+  gameState.roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+  gameState.isHost = true;
+  const { data: room, error: roomError } = await supabase.from('rooms').insert([{ code: gameState.roomCode }]);
+  const { data: player, error: playerError } = await supabase.from('players').insert([
+    { room_code: gameState.roomCode, username: gameState.username, is_host: true }
+  ]);
+  subscribeToGame();
+  showScreen('lobbyScreen');
+  document.getElementById('roomCodeDisplay').textContent = gameState.roomCode;
+};
+
+document.getElementById('joinRoomBtn').onclick = () => showScreen('joinRoomScreen');
+document.getElementById('joinRoomSubmit').onclick = async () => {
+  gameState.roomCode = document.getElementById('roomCodeInput').value.toUpperCase();
+  gameState.username = document.getElementById('usernameInput').value;
+  const { data: player, error } = await supabase.from('players').insert([
+    { room_code: gameState.roomCode, username: gameState.username }
+  ]);
+  subscribeToGame();
+  showScreen('lobbyScreen');
+  document.getElementById('roomCodeDisplay').textContent = gameState.roomCode;
+};
+
+async function subscribeToGame() {
+  supabase.channel(`room:${gameState.roomCode}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state', filter: `room_code=eq.${gameState.roomCode}` },
+      payload => {
+        handleGameState(payload.new);
+      })
+    .subscribe();
+}
+
+// === Host Starts Game ===
+document.getElementById('startGameBtn').onclick = async () => {
+  if (!gameState.isHost) return;
+  await loadBackupQuestions();
+  await startTriviaRound();
+};
+
+async function loadBackupQuestions() {
+  const res = await fetch("https://opentdb.com/api.php?amount=10&difficulty=medium&type=multiple");
+  const json = await res.json();
+  gameState.backupQuestions = json.results || [];
+}
+
+// === Trivia Round Logic ===
+async function startTriviaRound() {
+  const question = gameState.backupQuestions.pop();
+  gameState.currentQuestion = question;
+  const payload = {
+    room_code: gameState.roomCode,
+    phase: 'question',
+    question_data: question,
   };
+  await supabase.from('game_state').upsert([payload]);
+}
 
-  function showScreen(id) {
-    document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
-    const el = document.getElementById(id);
-    if (el) el.classList.add('active');
+function handleGameState(state) {
+  gameState.phase = state.phase;
+  if (state.phase === 'question') {
+    renderQuestion(state.question_data);
+  } else if (state.phase === 'minigame') {
+    startMinigame(state.minigame_name);
   }
+}
 
-  function generateRoomCode() {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
-  }
+function renderQuestion(q) {
+  showScreen('questionScreen');
+  document.getElementById('questionText').textContent = decodeHTML(q.question);
+  const answers = [...q.incorrect_answers, q.correct_answer].sort(() => Math.random() - 0.5);
+  const container = document.getElementById('answerButtons');
+  container.innerHTML = '';
+  answers.forEach(a => {
+    const btn = document.createElement('button');
+    btn.textContent = decodeHTML(a);
+    btn.onclick = () => submitAnswer(a === q.correct_answer);
+    container.appendChild(btn);
+  });
+  startQuestionTimer();
+}
 
-  async function createRoom(username) {
-    const roomCode = generateRoomCode();
-    gameState.room = roomCode;
-    gameState.isHost = true;
-    gameState.players = [{ username: username, is_host: true }];
+function decodeHTML(html) {
+  const el = document.createElement("textarea");
+  el.innerHTML = html;
+  return el.value;
+}
 
-    const { error } = await client.from('rooms').insert([{ code: roomCode, status: 'waiting' }]);
-    if (error) return console.error(error.message);
-
-    const { error: playerErr } = await client
-      .from('players')
-      .insert([{ room_code: roomCode, username: username, is_host: true }]);
-    if (playerErr) return console.error(playerErr.message);
-
-    showScreen('lobbyScreen');
-    document.getElementById('roomCodeDisplay').textContent = gameState.room;
-  }
-
-  function confirmUsername() {
-    const username = prompt("Enter your username:");
-    if (!username) return;
-    createRoom(username);
-  }
-
-  document.getElementById('createRoomBtn').addEventListener('click', confirmUsername);
-
-  // ======== Minigame Manager ========
-  const minigames = ["QuantumLeap", "ResourceRace", "DiceDuel", "Codebreaker"];
-  function selectRandomMinigame() {
-    const pick = minigames[Math.floor(Math.random() * minigames.length)];
-    gameState.currentMinigame = pick;
-    console.log("Selected minigame:", pick);
-    if (pick === "QuantumLeap") playQuantumLeapMinigame(gameState.players);
-    // Add more if-blocks as others are implemented
-  }
-
-  // ======== Quantum Leap Minigame ========
-  function playQuantumLeapMinigame(players) {
-    gameState.currentMinigame = "QuantumLeap";
-    showScreen("quantumLeapScreen");
-
-    const choiceInput = document.getElementById("quantumChoice");
-    const predictionInput = document.getElementById("quantumPrediction");
-    const submitBtn = document.getElementById("quantumSubmit");
-    const timerDisplay = document.getElementById("quantumTimer");
-    const messageBox = document.getElementById("quantumMessage");
-
-    let timer = 10;
-    let timerInterval;
-
-    function countdown() {
-      timerDisplay.textContent = timer + "s";
-      if (timer <= 0) {
-        clearInterval(timerInterval);
-        messageBox.textContent = "Time's up! Submitting choices...";
-        submitChoices();
-      } else {
-        timer--;
-      }
+function startQuestionTimer() {
+  let time = 10;
+  const timer = setInterval(() => {
+    document.getElementById('questionTimer').textContent = time + 's';
+    if (--time < 0) {
+      clearInterval(timer);
+      submitAnswer(false);
     }
+  }, 1000);
+}
 
-    function submitChoices() {
-      const position = parseInt(choiceInput.value);
-      const prediction = parseInt(predictionInput.value);
-      console.log("Player selected position:", position, "and predicted:", prediction);
-      messageBox.textContent = "Waiting for other players...";
-      // Here you'd sync results via Supabase
+async function submitAnswer(correct) {
+  const { data: player } = await supabase
+    .from('players')
+    .select('id')
+    .eq('room_code', gameState.roomCode)
+    .eq('username', gameState.username)
+    .single();
+  await supabase.from('player_actions').insert([
+    {
+      player_id: player.id,
+      room_code: gameState.roomCode,
+      round_number: gameState.round,
+      action_type: 'answer',
+      payload: { correct }
     }
+  ]);
+  showScreen('scoreboardScreen');
+}
 
-    submitBtn.onclick = () => {
-      clearInterval(timerInterval);
-      submitChoices();
-    };
+// === Minigame Manager ===
+function startMinigame(name) {
+  showScreen('minigameScreen');
+  const container = document.getElementById('minigameScreen');
+  container.innerHTML = `<h2>Minigame: ${name}</h2><p>Starting...</p>`;
+  // Load correct minigame function
+}
 
-    timer = 10;
-    timerInterval = setInterval(countdown, 1000);
+// === Scoreboard Update ===
+document.getElementById('nextRoundBtn').onclick = async () => {
+  gameState.round++;
+  if (gameState.round > gameState.totalRounds) {
+    startFinalRound();
+  } else {
+    await startTriviaRound();
   }
 };
+
+// === Final Round ===
+function startFinalRound() {
+  showScreen('finalRoundScreen');
+  // Load and render a special 2-answer question
+}
