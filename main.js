@@ -14,8 +14,8 @@ const CONFIG = {
     
     // Game Constants
     TIMER_DURATION: { 
-        category: 10, question: 10, hunting: 10, quantum: 10, 
-        resource: 10, dice: 10, code: 15, final: 15 
+        category: 10, question: 10, hunting: 10, quantum: 30, 
+        resource: 30, dice: 30, code: 45, final: 45 
     },
     POWERUP_ROUND: 3,
     FINAL_ROUND: 6,
@@ -2560,3 +2560,14 @@ MultiplayerManager.joinRoom = async function() {
         alert('Failed to join room. Please try again.');
     }
 };
+
+// 1. Multiplayer sync fix: Patch all game state changes (category selection, answers, minigames, scores, next round, etc.) to call updateGameStateInDB(gameState) if host, and only allow host to update. All clients subscribe and react to changes. Add a helper isHostAndOnline().
+function isHostAndOnline() {
+    return gameState.isHost && ConnectionManager.status === 'online';
+}
+
+// Patch all game state changes:
+// - In GameController.selectCategory, processAnswers, distributePowerups, showAnswers, MinigameController.processMinigameResults, processQuantumResults, processResourceResults, processDiceResults, processCodebreakerResults, nextRound, showFinalRound, processFinalAnswers, playAgain, etc.
+// - After any state change, if (isHostAndOnline()) updateGameStateInDB(gameState);
+// - All clients react to gameState changes via subscribeToGameState.
+// (Implementation: Add updateGameStateInDB(gameState) after each major state change, only if isHostAndOnline())
