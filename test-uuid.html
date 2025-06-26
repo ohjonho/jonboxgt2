@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UUID Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .success { background: #d4edda; border-color: #c3e6cb; }
+        .error { background: #f8d7da; border-color: #f5c6cb; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>UUID Generation Test</h1>
+    
+    <div class="test-section" id="uuid-test">
+        <h3>UUID Generation</h3>
+        <p>Testing UUID generation function...</p>
+    </div>
+    
+    <div class="test-section" id="format-test">
+        <h3>UUID Format Validation</h3>
+        <p>Checking UUID format...</p>
+    </div>
+    
+    <script>
+        // UUID generation function (same as in main.js)
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+        
+        // UUID format validation
+        function isValidUUID(uuid) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            return uuidRegex.test(uuid);
+        }
+        
+        // Test UUID generation
+        function testUUIDGeneration() {
+            const uuidTest = document.getElementById('uuid-test');
+            const formatTest = document.getElementById('format-test');
+            
+            try {
+                // Generate multiple UUIDs
+                const uuids = [];
+                for (let i = 0; i < 5; i++) {
+                    uuids.push(generateUUID());
+                }
+                
+                uuidTest.className = 'test-section success';
+                uuidTest.innerHTML += '<p>✅ UUID generation successful</p>';
+                uuidTest.innerHTML += '<p><strong>Generated UUIDs:</strong></p>';
+                uuidTest.innerHTML += '<pre>' + uuids.join('\n') + '</pre>';
+                
+                // Test format validation
+                const allValid = uuids.every(uuid => isValidUUID(uuid));
+                if (allValid) {
+                    formatTest.className = 'test-section success';
+                    formatTest.innerHTML += '<p>✅ All UUIDs have correct format</p>';
+                } else {
+                    formatTest.className = 'test-section error';
+                    formatTest.innerHTML += '<p>❌ Some UUIDs have incorrect format</p>';
+                }
+                
+                // Test uniqueness
+                const uniqueUUIDs = new Set(uuids);
+                if (uniqueUUIDs.size === uuids.length) {
+                    formatTest.innerHTML += '<p>✅ All UUIDs are unique</p>';
+                } else {
+                    formatTest.innerHTML += '<p>❌ Some UUIDs are duplicates</p>';
+                }
+                
+            } catch (error) {
+                uuidTest.className = 'test-section error';
+                uuidTest.innerHTML += `<p>❌ UUID generation failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Run test
+        window.onload = function() {
+            testUUIDGeneration();
+        };
+    </script>
+</body>
+</html> 
