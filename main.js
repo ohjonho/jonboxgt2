@@ -1,6 +1,6 @@
 window.onload = function () {
   const supabaseUrl = 'https://iftehkxnwnhuugqtatzq.supabase.co';
-  const supabaseAnonKey = 'your-real-anon-key';
+  const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmdGVoa3hud25odXVncXRhdHpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5MTY0MjQsImV4cCI6MjA2NjQ5MjQyNH0.pfEUmJTCd1aNKLplV_qZdQagR1ZlqliCxMamUy6egrg';
   const client = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
 
   const gameState = {
