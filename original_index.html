@@ -379,6 +379,63 @@
             <div class="timer" id="huntingTimer">10</div>
         </div>
 
+        <!-- Quantum Leap Minigame Screen -->
+        <div class="screen" id="quantumLeapScreen">
+            <h2>🚀 Quantum Leap</h2>
+            <div class="minigame-info">
+                <strong>Phase 1:</strong> Pick a position (1-10) to leap to<br>
+                <strong>Phase 2:</strong> Place a trap on any position<br>
+                <strong>Scoring:</strong> Highest 2 players without traps get 2pts/1pt
+            </div>
+            <div class="container" id="quantumPlayerStatus"></div>
+            <p id="quantumInstructions">Choose your leap position!</p>
+            <div id="quantumPositions"></div>
+            <div class="timer" id="quantumTimer">10</div>
+        </div>
+
+        <!-- Resource Race Minigame Screen -->
+        <div class="screen" id="resourceRaceScreen">
+            <h2>⚒️ Resource Race</h2>
+            <div class="minigame-info">
+                <strong>Goal:</strong> Build projects (5 resources = 5 points) or sabotage others<br>
+                <strong>Sabotage:</strong> 1 resource = -2 points to target's projects<br>
+                <strong>Turns:</strong> 3 turns to allocate your 10 resources
+            </div>
+            <div class="container" id="resourcePlayerStatus"></div>
+            <p id="resourceInstructions">Turn 1: Allocate your resources!</p>
+            <div id="resourceControls"></div>
+            <div class="timer" id="resourceTimer">10</div>
+        </div>
+
+        <!-- Dice Duel Minigame Screen -->
+        <div class="screen" id="diceDuelScreen">
+            <h2>🎲 Dice Duel</h2>
+            <div class="minigame-info">
+                <strong>Rules:</strong> 3 rounds, choose 1-3 dice to roll<br>
+                <strong>Betting:</strong> Bet points on total dice value (optional)<br>
+                <strong>Scoring:</strong> Win bet = +bet points, Lose = -bet points, No bet = dice sum
+            </div>
+            <div class="container" id="dicePlayerStatus"></div>
+            <p id="diceInstructions">Round 1: Choose your dice and bet!</p>
+            <div id="diceControls"></div>
+            <div class="timer" id="diceTimer">10</div>
+        </div>
+
+        <!-- Codebreaker Minigame Screen -->
+        <div class="screen" id="codebreakerScreen">
+            <h2>🔐 Codebreaker</h2>
+            <div class="minigame-info">
+                <strong>Goal:</strong> Crack the 4-symbol code (🔴🟡🟢🔵)<br>
+                <strong>Feedback:</strong> ✅ = correct position, ⚪ = wrong position<br>
+                <strong>Attempts:</strong> 8 total attempts for all players
+            </div>
+            <div class="container" id="codePlayerStatus"></div>
+            <p id="codeInstructions">Your turn! Enter your 4-symbol guess:</p>
+            <div id="codeControls"></div>
+            <div id="codeHistory"></div>
+            <div class="timer" id="codeTimer">15</div>
+        </div>
+
         <!-- Minigame Results Screen -->
         <div class="screen" id="minigameResultsScreen">
             <h2>🎯 Hunting Results</h2>
@@ -436,14 +493,15 @@
         const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
         
         const CONSTANTS = {
-            TIMER_DURATION: { category: 10, question: 10, hunting: 10, final: 15 },
+            TIMER_DURATION: { category: 10, question: 10, hunting: 10, final: 15, quantum: 10, resource: 10, dice: 10, code: 15 },
             POWERUP_ROUND: 3,
             FINAL_ROUND: 6,
             GRID_SIZE: 16,
             MAX_PLAYERS: 12,
             MIN_PLAYERS: 2,
             POINTS: { correct: 2, finalFull: 8, finalPartial: 2 },
-            API_RATE_LIMIT: 2000
+            API_RATE_LIMIT: 2000,
+            MINIGAMES: ['hunting', 'quantum', 'resource', 'dice', 'codebreaker']
         };
 
         const COMPUTER_NAMES = ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank", "Grace", "Henry", "Ivy", "Jack"];
@@ -535,7 +593,19 @@
             minigameSelections: new Map(),
             lastApiCall: 0,
             pendingUsername: null,
-            supabaseSubscription: null
+            supabaseSubscription: null,
+            currentMinigame: null,
+            minigameData: new Map(),
+            quantumPositions: new Map(),
+            quantumTraps: new Map(),
+            resourceData: new Map(),
+            diceData: new Map(),
+            codeData: {
+                secretCode: [],
+                attempts: [],
+                currentAttempt: 0,
+                guessOrder: []
+            }
         };
 
         // ========================================
@@ -636,7 +706,24 @@
                 finalAnswers: new Map(),
                 flags: new Set(),
                 minigameSelections: new Map(),
-                supabaseSubscription: null
+                supabaseSubscription: null,
+                currentMinigame: null,
+                minigameData: new Map(),
+                quantumPositions: new Map(),
+                quantumTraps: new Map(),
+                resourceData: new Map(),
+                diceData: new Map(),
+                codeData: {
+                    secretCode: [],
+                    attempts: [],
+                    currentAttempt: 0,
+                    guessOrder: []
+                },
+                currentMinigameTurn: 1,
+                currentMinigameRound: 1,
+                currentDiceCount: 0,
+                currentBet: 0,
+                currentCodeGuess: []
             });
             
             log('Game state reset complete', 'success');
@@ -683,13 +770,14 @@
                 gameState.room = generateRoomCode();
                 gameState.isHost = true;
                 gameState.currentPlayer = {
-                    id: 'host',
+                    id: `host_${Date.now()}`,
                     name: username,
                     score: 0,
                     correctAnswers: 0,
-                    pointsStolen: 0
+                    pointsStolen: 0,
+                    isHost: true,
+                    isOnline: true
                 };
-                gameState.players = [gameState.currentPlayer];
 
                 // Try to create room in Supabase
                 try {
@@ -702,17 +790,29 @@
                     // Add host as player in Supabase
                     const { data: playerData, error: playerError } = await supabaseClient
                         .from('players')
-                        .insert([{ room_code: gameState.room, username: username, is_host: true }]);
+                        .insert([{ 
+                            room_code: gameState.room, 
+                            username: username, 
+                            is_host: true,
+                            player_id: gameState.currentPlayer.id,
+                            score: 0
+                        }]);
                     
                     if (playerError) throw playerError;
 
-                    // Subscribe to player updates
+                    // Subscribe to player updates BEFORE fetching
                     subscribeToPlayers(gameState.room);
+                    
+                    // Fetch initial player list to sync gameState.players
+                    await syncPlayersFromDatabase();
+                    
                     updateConnectionStatus('online', 'Room Created');
                     
                 } catch (error) {
                     log(`Supabase error (using offline mode): ${error.message}`, 'warn');
                     updateConnectionStatus('offline', 'Offline Mode');
+                    // Fallback to local mode
+                    gameState.players = [gameState.currentPlayer];
                 }
 
                 log(`Room created: ${gameState.room}`, 'success');
@@ -760,34 +860,57 @@
                         return;
                     }
 
+                    // Set local game state first
+                    resetGameState();
+                    gameState.room = roomCode;
+                    gameState.isHost = false;
+                    gameState.currentPlayer = {
+                        id: `player_${Date.now()}`,
+                        name: username,
+                        score: 0,
+                        correctAnswers: 0,
+                        pointsStolen: 0,
+                        isHost: false,
+                        isOnline: true
+                    };
+
                     // Add player to Supabase
                     const { data: playerData, error: playerError } = await supabaseClient
                         .from('players')
-                        .insert([{ room_code: roomCode, username: username }]);
+                        .insert([{ 
+                            room_code: roomCode, 
+                            username: username,
+                            is_host: false,
+                            player_id: gameState.currentPlayer.id,
+                            score: 0
+                        }]);
                     
                     if (playerError) throw playerError;
 
                     // Subscribe to player updates
                     subscribeToPlayers(roomCode);
+                    
+                    // Sync players from database
+                    await syncPlayersFromDatabase();
+                    
                     updateConnectionStatus('online', 'Joined Room');
 
                 } catch (error) {
                     log(`Supabase error (using offline mode): ${error.message}`, 'warn');
                     updateConnectionStatus('offline', 'Offline Mode');
+                    // Set fallback state
+                    resetGameState();
+                    gameState.room = roomCode;
+                    gameState.isHost = false;
+                    gameState.currentPlayer = {
+                        id: 'player',
+                        name: username,
+                        score: 0,
+                        correctAnswers: 0,
+                        pointsStolen: 0
+                    };
+                    gameState.players = [gameState.currentPlayer];
                 }
-
-                // Set local game state
-                resetGameState();
-                gameState.room = roomCode;
-                gameState.isHost = false;
-                gameState.currentPlayer = {
-                    id: 'player',
-                    name: username,
-                    score: 0,
-                    correctAnswers: 0,
-                    pointsStolen: 0
-                };
-                gameState.players = [gameState.currentPlayer];
 
                 showLobby();
 
@@ -809,14 +932,17 @@
                             table: 'players', 
                             filter: `room_code=eq.${roomCode}` 
                         },
-                        payload => {
-                            log('Player update received', 'info');
-                            fetchAndRenderPlayerList(roomCode);
+                        async (payload) => {
+                            log(`Player update received: ${payload.eventType}`, 'info');
+                            await syncPlayersFromDatabase();
+                            updatePlayerList();
                         }
                     )
                     .subscribe((status) => {
                         if (status === 'SUBSCRIBED') {
                             log('Successfully subscribed to player updates', 'success');
+                            // Initial fetch after subscription
+                            syncPlayersFromDatabase();
                         } else if (status === 'CHANNEL_ERROR') {
                             log('Error subscribing to player updates', 'error');
                             updateConnectionStatus('offline', 'Connection Error');
@@ -828,46 +954,48 @@
             }
         }
 
-        async function fetchAndRenderPlayerList(roomCode) {
+        async function syncPlayersFromDatabase() {
             try {
+                if (!gameState.room) return;
+                
                 const { data: players, error } = await supabaseClient
                     .from('players')
                     .select('*')
-                    .eq('room_code', roomCode);
+                    .eq('room_code', gameState.room);
                 
-                if (!error && players) {
-                    renderOnlinePlayerList(players);
+                if (error) {
+                    log(`Error fetching players: ${error.message}`, 'error');
+                    return;
+                }
+
+                if (players) {
+                    // Convert database players to game format
+                    const onlinePlayers = players.map(dbPlayer => ({
+                        id: dbPlayer.player_id || dbPlayer.username,
+                        name: dbPlayer.username,
+                        score: dbPlayer.score || 0,
+                        correctAnswers: 0,
+                        pointsStolen: 0,
+                        isHost: dbPlayer.is_host || false,
+                        isOnline: true
+                    }));
+
+                    // Merge online players with any local AI players
+                    const aiPlayers = gameState.players?.filter(p => p.difficulty) || [];
+                    
+                    // Update the main players array
+                    gameState.players = [...onlinePlayers, ...aiPlayers];
+                    
+                    // Ensure current player is in the list
+                    if (gameState.currentPlayer && !gameState.players.find(p => p.id === gameState.currentPlayer.id)) {
+                        gameState.players.push(gameState.currentPlayer);
+                    }
+
+                    log(`Synced ${onlinePlayers.length} online players + ${aiPlayers.length} AI players`, 'success');
                 }
             } catch (error) {
-                log(`Error fetching player list: ${error.message}`, 'error');
+                log(`Error syncing players: ${error.message}`, 'error');
             }
-        }
-
-        function renderOnlinePlayerList(players) {
-            if (!DOM.playerList) return;
-            
-            const fragment = document.createDocumentFragment();
-            
-            const header = document.createElement('h3');
-            header.textContent = `🌐 Online Players (${players.length}/${CONSTANTS.MAX_PLAYERS})`;
-            fragment.appendChild(header);
-            
-            players.forEach(player => {
-                const div = document.createElement('div');
-                div.className = 'item';
-                
-                const isCurrentPlayer = player.username === gameState.currentPlayer?.name;
-                const hostIndicator = player.is_host ? ' 👑' : '';
-                
-                div.innerHTML = `
-                    <span>${player.username}${isCurrentPlayer ? ' (You)' : ''}${hostIndicator}</span>
-                    <span>Online</span>
-                `;
-                fragment.appendChild(div);
-            });
-            
-            DOM.playerList.innerHTML = '';
-            DOM.playerList.appendChild(fragment);
         }
 
         // ========================================
@@ -1171,7 +1299,7 @@
             showScreen('homeScreen');
         }
 
-        function addComputerPlayer(difficulty = 'medium') {
+        async function addComputerPlayer(difficulty = 'medium') {
             try {
                 if (gameState.players.length >= CONSTANTS.MAX_PLAYERS) {
                     alert('Room is full! Maximum 12 players allowed.');
@@ -1192,14 +1320,26 @@
                 const difficultyEmoji = { easy: '🟢', medium: '🟡', hard: '🔴' };
                 const displayName = `${computerName} ${difficultyEmoji[difficulty]}`;
                 
-                gameState.players.push({
+                const aiPlayer = {
                     id: computerId,
                     name: displayName,
                     score: 0,
                     correctAnswers: 0,
                     pointsStolen: 0,
-                    difficulty: difficulty
-                });
+                    difficulty: difficulty,
+                    isOnline: false
+                };
+                
+                gameState.players.push(aiPlayer);
+                
+                // Sync database if online
+                if (gameState.supabaseSubscription && gameState.room) {
+                    try {
+                        await syncPlayersFromDatabase();
+                    } catch (error) {
+                        log(`Error syncing after adding AI player: ${error.message}`, 'warn');
+                    }
+                }
                 
                 updatePlayerList();
                 updateStartButton();
@@ -1233,7 +1373,7 @@
             }
         }
 
-        function startGame() {
+        async function startGame() {
             try {
                 if (gameState.players.length < CONSTANTS.MIN_PLAYERS) {
                     alert('Need at least 2 players to start!');
@@ -1242,7 +1382,27 @@
                 
                 if (DOM.startGameBtn) {
                     DOM.startGameBtn.disabled = true;
-                    DOM.startGameBtn.textContent = 'Loading Questions...';
+                    DOM.startGameBtn.textContent = 'Loading Game...';
+                }
+                
+                // Sync latest players from database if online
+                if (gameState.supabaseSubscription && gameState.room) {
+                    try {
+                        await syncPlayersFromDatabase();
+                        log(`Starting game with ${gameState.players.length} total players`, 'success');
+                    } catch (error) {
+                        log(`Error syncing players before game start: ${error.message}`, 'warn');
+                    }
+                }
+                
+                // Final check for minimum players
+                if (gameState.players.length < CONSTANTS.MIN_PLAYERS) {
+                    alert('Need at least 2 players to start!');
+                    if (DOM.startGameBtn) {
+                        DOM.startGameBtn.disabled = false;
+                        DOM.startGameBtn.textContent = 'Start Game';
+                    }
+                    return;
                 }
                 
                 // Try to fetch fresh questions
@@ -1285,43 +1445,105 @@
         }
 
         function updatePlayerList() {
-            // If we have a Supabase subscription and are online, the online player list will override this
-            if (gameState.supabaseSubscription) {
-                fetchAndRenderPlayerList(gameState.room);
-                return;
-            }
-
-            // Fallback to local player list
             if (!DOM.playerList) return;
             
             const fragment = document.createDocumentFragment();
             
-            const header = document.createElement('h3');
-            header.textContent = `📴 Offline Players (${gameState.players.length}/${CONSTANTS.MAX_PLAYERS})`;
-            fragment.appendChild(header);
+            // Separate online and AI players
+            const onlinePlayers = gameState.players.filter(p => p.isOnline !== false);
+            const aiPlayers = gameState.players.filter(p => p.difficulty);
             
-            gameState.players.forEach(player => {
-                const div = document.createElement('div');
-                div.className = 'item';
+            const header = document.createElement('h3');
+            
+            if (gameState.supabaseSubscription && onlinePlayers.length > 0) {
+                header.textContent = `🌐 Players (${gameState.players.length}/${CONSTANTS.MAX_PLAYERS})`;
                 
-                let statusHTML = '';
-                if (gameState.powerups.has(player.id)) {
-                    statusHTML += '<span class="status powerup">💪</span>';
-                }
-                if (gameState.playerStatus.has(player.id)) {
-                    const status = gameState.playerStatus.get(player.id);
-                    statusHTML += `<span class="player-type ${status.toLowerCase()}">${status}</span>`;
+                // Show online players first
+                if (onlinePlayers.length > 0) {
+                    const onlineHeader = document.createElement('h4');
+                    onlineHeader.textContent = `Online Players (${onlinePlayers.length}):`;
+                    onlineHeader.style.marginTop = '10px';
+                    fragment.appendChild(onlineHeader);
+                    
+                    onlinePlayers.forEach(player => {
+                        const div = document.createElement('div');
+                        div.className = 'item';
+                        
+                        const isCurrentPlayer = player.id === gameState.currentPlayer?.id;
+                        const hostIndicator = player.isHost ? ' 👑' : '';
+                        
+                        let statusHTML = '';
+                        if (gameState.powerups.has(player.id)) {
+                            statusHTML += '<span class="status powerup">💪</span>';
+                        }
+                        if (gameState.playerStatus.has(player.id)) {
+                            const status = gameState.playerStatus.get(player.id);
+                            statusHTML += `<span class="player-type ${status.toLowerCase()}">${status}</span>`;
+                        }
+                        
+                        div.innerHTML = `
+                            <span>${player.name}${isCurrentPlayer ? ' (You)' : ''}${hostIndicator}</span>
+                            <span>${player.score || 0} pts ${statusHTML}</span>
+                        `;
+                        fragment.appendChild(div);
+                    });
                 }
                 
-                const isCurrentPlayer = player.id === gameState.currentPlayer?.id;
-                div.innerHTML = `
-                    <span>${player.name}${isCurrentPlayer ? ' (You)' : ''}</span>
-                    <span>${player.score} pts ${statusHTML}</span>
-                `;
-                fragment.appendChild(div);
-            });
+                // Show AI players
+                if (aiPlayers.length > 0) {
+                    const aiHeader = document.createElement('h4');
+                    aiHeader.textContent = `AI Players (${aiPlayers.length}):`;
+                    aiHeader.style.marginTop = '10px';
+                    fragment.appendChild(aiHeader);
+                    
+                    aiPlayers.forEach(player => {
+                        const div = document.createElement('div');
+                        div.className = 'item';
+                        
+                        let statusHTML = '';
+                        if (gameState.powerups.has(player.id)) {
+                            statusHTML += '<span class="status powerup">💪</span>';
+                        }
+                        if (gameState.playerStatus.has(player.id)) {
+                            const status = gameState.playerStatus.get(player.id);
+                            statusHTML += `<span class="player-type ${status.toLowerCase()}">${status}</span>`;
+                        }
+                        
+                        div.innerHTML = `
+                            <span>${player.name}</span>
+                            <span>${player.score} pts ${statusHTML}</span>
+                        `;
+                        fragment.appendChild(div);
+                    });
+                }
+            } else {
+                // Fallback to local player list
+                header.textContent = `📴 Offline Players (${gameState.players.length}/${CONSTANTS.MAX_PLAYERS})`;
+                
+                gameState.players.forEach(player => {
+                    const div = document.createElement('div');
+                    div.className = 'item';
+                    
+                    let statusHTML = '';
+                    if (gameState.powerups.has(player.id)) {
+                        statusHTML += '<span class="status powerup">💪</span>';
+                    }
+                    if (gameState.playerStatus.has(player.id)) {
+                        const status = gameState.playerStatus.get(player.id);
+                        statusHTML += `<span class="player-type ${status.toLowerCase()}">${status}</span>`;
+                    }
+                    
+                    const isCurrentPlayer = player.id === gameState.currentPlayer?.id;
+                    div.innerHTML = `
+                        <span>${player.name}${isCurrentPlayer ? ' (You)' : ''}</span>
+                        <span>${player.score} pts ${statusHTML}</span>
+                    `;
+                    fragment.appendChild(div);
+                });
+            }
             
             DOM.playerList.innerHTML = '';
+            DOM.playerList.appendChild(header);
             DOM.playerList.appendChild(fragment);
         }
 
@@ -1567,18 +1789,48 @@
             const winners = gameState.players.filter(p => gameState.playerStatus.get(p.id) === 'W');
             const losers = gameState.players.filter(p => gameState.playerStatus.get(p.id) === 'L');
             
-            // Skip minigame if no winners or no losers
+            // Skip minigame if no winners or no losers (except for some minigames that work with any split)
             if (winners.length === 0 || losers.length === 0) {
-                log('Skipping minigame - no valid W/L split', 'warn');
-                setTimeout(() => {
-                    gameState.playerStatus.clear();
-                    showScoreboard();
-                }, 2000);
-                return;
+                // Some minigames work with any player split
+                const anyPlayerMinigames = ['resource', 'dice', 'codebreaker'];
+                const selectedMinigame = CONSTANTS.MINIGAMES[(gameState.currentRound - 1) % CONSTANTS.MINIGAMES.length];
+                
+                if (!anyPlayerMinigames.includes(selectedMinigame)) {
+                    log('Skipping minigame - no valid W/L split and minigame requires it', 'warn');
+                    setTimeout(() => {
+                        gameState.playerStatus.clear();
+                        showScoreboard();
+                    }, 2000);
+                    return;
+                }
             }
             
-            log(`Starting minigame: ${winners.length} winners vs ${losers.length} losers`, 'success');
-            showHuntingSeasonMinigame();
+            // Select minigame based on round (rotating through all 5)
+            const minigameIndex = (gameState.currentRound - 1) % CONSTANTS.MINIGAMES.length;
+            const selectedMinigame = CONSTANTS.MINIGAMES[minigameIndex];
+            gameState.currentMinigame = selectedMinigame;
+            
+            log(`Starting ${selectedMinigame} minigame (${winners.length} winners vs ${losers.length} losers)`, 'success');
+            
+            switch (selectedMinigame) {
+                case 'hunting':
+                    showHuntingSeasonMinigame();
+                    break;
+                case 'quantum':
+                    showQuantumLeapMinigame();
+                    break;
+                case 'resource':
+                    showResourceRaceMinigame();
+                    break;
+                case 'dice':
+                    showDiceDuelMinigame();
+                    break;
+                case 'codebreaker':
+                    showCodebreakerMinigame();
+                    break;
+                default:
+                    showHuntingSeasonMinigame();
+            }
         }
 
         function showHuntingSeasonMinigame() {
@@ -1760,7 +2012,286 @@
             showMinigameResults(results, winnerSelections, loserSelections);
         }
 
-        function showMinigameResults(results, winnerSelections, loserSelections) {
+        // ========================================
+        // RESOURCE RACE MINIGAME
+        // ========================================
+        
+        function showResourceRaceMinigame() {
+            showScreen('resourceRaceScreen');
+            gameState.resourceData.clear();
+            gameState.flags.clear();
+            
+            // Initialize player resources
+            gameState.players.forEach(player => {
+                gameState.resourceData.set(player.id, {
+                    resources: 10,
+                    projects: 0,
+                    sabotages: new Map(),
+                    turn: 1
+                });
+            });
+            
+            gameState.currentMinigameTurn = 1;
+            updateResourcePlayerStatus();
+            createResourceControls();
+            
+            startTimer('resourceTimer', CONSTANTS.TIMER_DURATION.resource, () => {
+                autoAllocateResources();
+            });
+        }
+
+        function updateResourcePlayerStatus() {
+            const resourcePlayerStatus = document.getElementById('resourcePlayerStatus');
+            if (!resourcePlayerStatus) return;
+            
+            const fragment = document.createDocumentFragment();
+            const header = document.createElement('h3');
+            header.textContent = `Turn ${gameState.currentMinigameTurn}/3`;
+            fragment.appendChild(header);
+            
+            gameState.players.forEach(player => {
+                const data = gameState.resourceData.get(player.id);
+                const div = document.createElement('div');
+                div.className = 'item';
+                div.innerHTML = `
+                    <span>${player.name}</span>
+                    <span>Resources: ${data.resources}, Projects: ${data.projects}</span>
+                `;
+                fragment.appendChild(div);
+            });
+            
+            resourcePlayerStatus.innerHTML = '';
+            resourcePlayerStatus.appendChild(fragment);
+        }
+
+        function createResourceControls() {
+            const resourceControls = document.getElementById('resourceControls');
+            if (!resourceControls) return;
+            
+            const playerData = gameState.resourceData.get(gameState.currentPlayer.id);
+            const fragment = document.createDocumentFragment();
+            
+            const resourcesDiv = document.createElement('div');
+            resourcesDiv.innerHTML = `<h4>Available Resources: <span id="availableResources">${playerData.resources}</span></h4>`;
+            fragment.appendChild(resourcesDiv);
+            
+            // Build Project button
+            const buildDiv = document.createElement('div');
+            buildDiv.style.margin = '10px 0';
+            buildDiv.innerHTML = `
+                <button id="buildProjectBtn" class="success">Build Project (5 resources = 5 points)</button>
+            `;
+            fragment.appendChild(buildDiv);
+            
+            // Sabotage section
+            const sabotageDiv = document.createElement('div');
+            sabotageDiv.innerHTML = '<h4>Sabotage Players:</h4>';
+            
+            gameState.players.forEach(player => {
+                if (player.id !== gameState.currentPlayer.id) {
+                    const sabotageBtn = document.createElement('button');
+                    sabotageBtn.className = 'danger';
+                    sabotageBtn.textContent = `Sabotage ${player.name} (1 resource = -2 to their projects)`;
+                    sabotageBtn.style.margin = '5px';
+                    sabotageBtn.style.fontSize = '0.9rem';
+                    sabotageBtn.onclick = () => sabotagePlayer(player.id);
+                    sabotageDiv.appendChild(sabotageBtn);
+                }
+            });
+            
+            fragment.appendChild(sabotageDiv);
+            
+            const finishDiv = document.createElement('div');
+            finishDiv.style.margin = '15px 0';
+            finishDiv.innerHTML = `<button id="finishTurnBtn" class="secondary">Finish Turn</button>`;
+            fragment.appendChild(finishDiv);
+            
+            resourceControls.innerHTML = '';
+            resourceControls.appendChild(fragment);
+            
+            // Add event listeners
+            document.getElementById('buildProjectBtn').onclick = buildProject;
+            document.getElementById('finishTurnBtn').onclick = finishResourceTurn;
+            
+            updateResourceButtons();
+        }
+
+        function buildProject() {
+            const playerData = gameState.resourceData.get(gameState.currentPlayer.id);
+            if (playerData.resources >= 5) {
+                playerData.resources -= 5;
+                playerData.projects += 1;
+                updateResourceDisplay();
+                updateResourceButtons();
+                log('Built a project!', 'success');
+            }
+        }
+
+        function sabotagePlayer(targetId) {
+            const playerData = gameState.resourceData.get(gameState.currentPlayer.id);
+            if (playerData.resources >= 1) {
+                playerData.resources -= 1;
+                
+                const currentSabotage = playerData.sabotages.get(targetId) || 0;
+                playerData.sabotages.set(targetId, currentSabotage + 1);
+                
+                updateResourceDisplay();
+                updateResourceButtons();
+                
+                const targetPlayer = gameState.players.find(p => p.id === targetId);
+                log(`Sabotaged ${targetPlayer.name}!`, 'success');
+            }
+        }
+
+        function updateResourceDisplay() {
+            const playerData = gameState.resourceData.get(gameState.currentPlayer.id);
+            const availableEl = document.getElementById('availableResources');
+            if (availableEl) {
+                availableEl.textContent = playerData.resources;
+            }
+            updateResourcePlayerStatus();
+        }
+
+        function updateResourceButtons() {
+            const playerData = gameState.resourceData.get(gameState.currentPlayer.id);
+            const buildBtn = document.getElementById('buildProjectBtn');
+            if (buildBtn) {
+                buildBtn.disabled = playerData.resources < 5;
+            }
+            
+            document.querySelectorAll('#resourceControls .danger').forEach(btn => {
+                btn.disabled = playerData.resources < 1;
+            });
+        }
+
+        function finishResourceTurn() {
+            // Simulate AI player turns
+            simulateAIResourceTurns();
+            
+            gameState.currentMinigameTurn++;
+            
+            if (gameState.currentMinigameTurn <= 3) {
+                // Next turn
+                updateResourcePlayerStatus();
+                createResourceControls();
+                
+                const instructions = document.getElementById('resourceInstructions');
+                if (instructions) {
+                    instructions.textContent = `Turn ${gameState.currentMinigameTurn}: Allocate your resources!`;
+                }
+                
+                startTimer('resourceTimer', CONSTANTS.TIMER_DURATION.resource, () => {
+                    autoAllocateResources();
+                });
+            } else {
+                // End minigame
+                processResourceResults();
+            }
+        }
+
+        function simulateAIResourceTurns() {
+            gameState.players.forEach(player => {
+                if (player.id !== gameState.currentPlayer.id) {
+                    const playerData = gameState.resourceData.get(player.id);
+                    
+                    // AI strategy based on difficulty
+                    let strategy = 'balanced';
+                    if (player.difficulty === 'easy') strategy = 'random';
+                    else if (player.difficulty === 'hard') strategy = 'optimal';
+                    
+                    while (playerData.resources > 0) {
+                        if (strategy === 'optimal' && playerData.resources >= 5) {
+                            // Build projects first
+                            playerData.resources -= 5;
+                            playerData.projects += 1;
+                        } else if (strategy === 'balanced' && Math.random() < 0.7 && playerData.resources >= 5) {
+                            // Build projects most of the time
+                            playerData.resources -= 5;
+                            playerData.projects += 1;
+                        } else if (playerData.resources >= 1 && Math.random() < 0.3) {
+                            // Sometimes sabotage
+                            const targets = gameState.players.filter(p => p.id !== player.id);
+                            const target = getRandomElement(targets);
+                            playerData.resources -= 1;
+                            const currentSab = playerData.sabotages.get(target.id) || 0;
+                            playerData.sabotages.set(target.id, currentSab + 1);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+
+        function autoAllocateResources() {
+            // Auto-allocate remaining resources if player didn't finish
+            const playerData = gameState.resourceData.get(gameState.currentPlayer.id);
+            while (playerData.resources >= 5) {
+                playerData.resources -= 5;
+                playerData.projects += 1;
+            }
+            finishResourceTurn();
+        }
+
+        function processResourceResults() {
+            const results = [];
+            
+            gameState.players.forEach(player => {
+                const playerData = gameState.resourceData.get(player.id);
+                let projectPoints = playerData.projects * 5;
+                
+                // Apply sabotage damage
+                gameState.players.forEach(other => {
+                    if (other.id !== player.id) {
+                        const otherData = gameState.resourceData.get(other.id);
+                        const sabotageCount = otherData.sabotages.get(player.id) || 0;
+                        projectPoints -= sabotageCount * 2;
+                    }
+                });
+                
+                projectPoints = Math.max(0, projectPoints); // Can't go negative
+                player.score += projectPoints;
+                
+                results.push({
+                    player: player.name,
+                    projects: playerData.projects,
+                    basePoints: playerData.projects * 5,
+                    sabotageReceived: (playerData.projects * 5) - projectPoints,
+                    finalPoints: projectPoints
+                });
+            });
+            
+            showResourceResults(results);
+        }
+
+        function showResourceResults(results) {
+            showScreen('minigameResultsScreen');
+            
+            const minigameResults = document.getElementById('minigameResults');
+            if (!minigameResults) return;
+            
+            const fragment = document.createDocumentFragment();
+            
+            const header = document.createElement('h3');
+            header.textContent = '⚒️ Resource Race Results';
+            fragment.appendChild(header);
+            
+            results.forEach(result => {
+                const div = document.createElement('div');
+                div.className = 'item';
+                div.innerHTML = `
+                    <div>
+                        <strong>${result.player}</strong><br>
+                        <small>Projects: ${result.projects} | Base: ${result.basePoints} | Sabotaged: -${result.sabotageReceived}</small>
+                    </div>
+                    <span>+${result.finalPoints} pts</span>
+                `;
+                fragment.appendChild(div);
+            });
+            
+            minigameResults.innerHTML = '';
+            minigameResults.appendChild(fragment);
+        }
             showScreen('minigameResultsScreen');
             
             const minigameResults = document.getElementById('minigameResults');
@@ -1870,6 +2401,27 @@
             gameState.currentRound++;
             gameState.selectedAnswers = [];
             gameState.playerStatus.clear(); // Clear W/L status for next round
+            
+            // Clear minigame data from previous round
+            gameState.minigameSelections.clear();
+            gameState.quantumPositions.clear();
+            gameState.quantumTraps.clear();
+            gameState.resourceData.clear();
+            gameState.diceData.clear();
+            gameState.codeData = {
+                secretCode: [],
+                attempts: [],
+                currentAttempt: 0,
+                guessOrder: []
+            };
+            gameState.currentMinigame = null;
+            gameState.currentMinigameTurn = 1;
+            gameState.currentMinigameRound = 1;
+            gameState.currentDiceCount = 0;
+            gameState.currentBet = 0;
+            gameState.currentCodeGuess = [];
+            
+            log(`Starting Round ${gameState.currentRound}`, 'success');
             showCategorySelection();
         }
 
@@ -2078,16 +2630,34 @@
 
         function playAgain() {
             if (confirm('Start a new game with the same players?')) {
+                // Reset player scores but keep players
                 gameState.players.forEach(player => {
                     player.score = 0;
                     player.correctAnswers = 0;
                     player.pointsStolen = 0;
                 });
                 
+                // Reset game round data
                 gameState.currentRound = 1;
                 gameState.playerStatus.clear();
                 gameState.powerups.clear();
                 gameState.backupQuestions = [...BACKUP_QUESTIONS];
+                
+                // Reset minigame data
+                gameState.minigameSelections.clear();
+                gameState.quantumPositions.clear();
+                gameState.quantumTraps.clear();
+                gameState.resourceData.clear();
+                gameState.diceData.clear();
+                gameState.codeData = {
+                    secretCode: [],
+                    attempts: [],
+                    currentAttempt: 0,
+                    guessOrder: []
+                };
+                gameState.currentMinigame = null;
+                gameState.currentMinigameTurn = 1;
+                gameState.currentMinigameRound = 1;
                 
                 // Fetch fresh questions
                 fetchQuestionsFromAnyApi();
