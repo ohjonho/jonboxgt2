@@ -2,7 +2,7 @@
 // main.js — Full Game Logic for Trivia Murder Party
 
 const SUPABASE_URL = 'https://iftehkxnwnhuugqtatzq.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmdGVoa3hud25odXVncXRhdHpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5MTY0MjQsImV4cCI6MjA2NjQ5MjQyNH0.pfEUmJTCd1aNKLplV_qZdQagR1ZlqliCxMamUy6egrg';  const client = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmdGVoa3hud25odXVncXRhdHpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5MTY0MjQsImV4cCI6MjA2NjQ5MjQyNH0.pfEUmJTCd1aNKLplV_qZdQagR1ZlqliCxMamUy6egrg';  const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let gameState = {
