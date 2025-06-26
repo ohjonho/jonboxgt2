@@ -5,7 +5,276 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Trivia Murder Party</title>
-  <link rel="stylesheet" href="style.css" />
+  <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+        }
+
+        .game-container {
+            width: 100%;
+            max-width: 400px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .screen {
+            display: none;
+            text-align: center;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h1, h2 {
+            color: #ffd700;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 { font-size: 2rem; }
+        h2 { font-size: 1.5rem; }
+
+        button {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: transform 0.2s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            min-width: 120px;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .secondary { background: linear-gradient(45deg, #74b9ff, #0984e3); }
+        .success { background: linear-gradient(45deg, #00b894, #00a085); }
+        .danger { background: linear-gradient(45deg, #e17055, #d63031); }
+
+        input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ffd700;
+            border-radius: 10px;
+            font-size: 1rem;
+            margin: 10px 0;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+        }
+
+        .room-code {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #ffd700;
+            background: rgba(255, 215, 0, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            letter-spacing: 3px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .item {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .option {
+            width: 100%;
+            padding: 15px;
+            margin: 8px 0;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid transparent;
+            border-radius: 10px;
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .option:hover { background: rgba(255, 255, 255, 0.3); border-color: #ffd700; }
+        .option.selected { background: #ffd700; color: #333; border-color: #ffd700; }
+
+        .timer {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #ff6b6b;
+            margin: 20px 0;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+            max-width: 280px;
+            margin: 20px auto;
+        }
+
+        .grid-cell {
+            aspect-ratio: 1;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1rem;
+        }
+
+        .grid-cell:hover { background: rgba(255, 255, 255, 0.4); border-color: #ffd700; }
+        .grid-cell.selected { background: #ffd700; color: #333; }
+        .grid-cell.winner { background: #00b894; color: white; }
+        .grid-cell.loser { background: #e17055; color: white; }
+        .grid-cell.collision { background: #ff6b6b; color: white; animation: pulse 0.5s ease-in-out; }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .item.winner { background: linear-gradient(45deg, #ffd700, #ffed4e); color: #333; }
+        .item.correct { background: rgba(0, 184, 148, 0.3); border-left: 4px solid #00b894; }
+        .item.partially-correct { background: rgba(255, 193, 7, 0.3); border-left: 4px solid #ffc107; }
+        .item.incorrect { background: rgba(225, 112, 85, 0.3); border-left: 4px solid #e17055; }
+
+        .highlight {
+            background: rgba(255, 215, 0, 0.3);
+            border: 2px solid #ffd700;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            font-weight: bold;
+        }
+
+        .status {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .status.w { background: #00b894; color: white; }
+        .status.l { background: #e17055; color: white; }
+        .status.powerup { background: linear-gradient(45deg, #a29bfe, #6c5ce7); color: white; }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #ffd700;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .api-status {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .api-status.working { background: #00b894; }
+        .api-status.failed { background: #e17055; }
+        .api-status.unknown { background: #ffd700; }
+
+        .minigame-info {
+            background: rgba(255, 215, 0, 0.2);
+            border: 1px solid #ffd700;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            font-size: 0.9rem;
+        }
+
+        .player-type {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+
+        .player-type.w { background: #00b894; color: white; }
+        .player-type.l { background: #e17055; color: white; }
+
+        @media (max-width: 480px) {
+            .game-container { padding: 15px; }
+            h1 { font-size: 1.5rem; }
+            .room-code { font-size: 1.5rem; letter-spacing: 2px; }
+            .timer { font-size: 2rem; }
+            .grid { max-width: 250px; }
+            .grid-cell { font-size: 0.9rem; }
+        }
+    </style>
+
 </head>
 <body>
   <div class="game-container">
