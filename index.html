@@ -405,7 +405,7 @@
             <button onclick="showHomeScreen()" class="secondary">Main Menu</button>
         </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
 // ====== REAL-TIME SUBSCRIPTIONS AND SUPABASE SYNC PATCHES ======
 
 // Subscribe helpers
@@ -449,8 +449,9 @@ subscribeToMinigamePicks(gameState.room);
 subscribeToAnswers(gameState.room);
 
 </script>
-
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
     <script>
+  window.onload = function () {
         // ========================================
         // GLOBAL VARIABLES AND CONSTANTS
         // ========================================
@@ -2175,7 +2176,7 @@ function subscribeToAnswers(roomCode) {
       })
     .subscribe();
 }
-
+  }
 // Call these subscriptions on join/create
 // After subscribeToPlayers(gameState.room);
 subscribeToGameState(gameState.room);
