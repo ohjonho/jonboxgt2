@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .success { background: #d4edda; border-color: #c3e6cb; }
+        .error { background: #f8d7da; border-color: #f5c6cb; }
+        .info { background: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        input { padding: 8px; margin: 5px; }
+        #log { background: #f8f9fa; padding: 10px; border-radius: 5px; max-height: 300px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>Multiplayer Sync Test</h1>
+    
+    <div class="test-section info">
+        <h3>Connection Test</h3>
+        <button onclick="testConnection()">Test Supabase Connection</button>
+        <div id="connectionResult"></div>
+    </div>
+    
+    <div class="test-section info">
+        <h3>Room Creation Test</h3>
+        <input type="text" id="testUsername" placeholder="Username" value="TestUser">
+        <button onclick="testCreateRoom()">Create Test Room</button>
+        <div id="createResult"></div>
+    </div>
+    
+    <div class="test-section info">
+        <h3>Room Join Test</h3>
+        <input type="text" id="testRoomCode" placeholder="Room Code" maxlength="6">
+        <input type="text" id="testJoinUsername" placeholder="Username" value="TestJoiner">
+        <button onclick="testJoinRoom()">Join Test Room</button>
+        <div id="joinResult"></div>
+    </div>
+    
+    <div class="test-section info">
+        <h3>Player Sync Test</h3>
+        <button onclick="testPlayerSync()">Test Player Sync</button>
+        <div id="syncResult"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Debug Log</h3>
+        <div id="log"></div>
+    </div>
+
+    <!-- Load Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Load our modules -->
+    <script src="core.js"></script>
+    <script src="ui.js"></script>
+    <script src="multiplayer.js"></script>
+    <script src="api.js"></script>
+    
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'success' ? 'green' : type === 'error' ? 'red' : 'blue';
+            logDiv.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        async function testConnection() {
+            const resultDiv = document.getElementById('connectionResult');
+            resultDiv.innerHTML = 'Testing connection...';
+            
+            try {
+                const isConnected = await ConnectionManager.initializeSupabase();
+                if (isConnected) {
+                    resultDiv.innerHTML = '<span style="color: green;">✅ Connection successful!</span>';
+                    resultDiv.className = 'test-section success';
+                } else {
+                    resultDiv.innerHTML = '<span style="color: red;">❌ Connection failed - using offline mode</span>';
+                    resultDiv.className = 'test-section error';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span style="color: red;">❌ Error: ${error.message}</span>`;
+                resultDiv.className = 'test-section error';
+            }
+        }
+
+        async function testCreateRoom() {
+            const resultDiv = document.getElementById('createResult');
+            const username = document.getElementById('testUsername').value;
+            
+            if (!username) {
+                resultDiv.innerHTML = '<span style="color: red;">Please enter a username</span>';
+                return;
+            }
+            
+            resultDiv.innerHTML = 'Creating room...';
+            
+            try {
+                gameState.pendingUsername = username;
+                await MultiplayerManager.createRoom();
+                
+                resultDiv.innerHTML = `
+                    <span style="color: green;">✅ Room created successfully!</span><br>
+                    Room Code: <strong>${gameState.room}</strong><br>
+                    Players: ${gameState.players.length}<br>
+                    Connection: ${ConnectionManager.status}
+                `;
+                resultDiv.className = 'test-section success';
+                
+                log(`Room created: ${gameState.room} with ${gameState.players.length} players`, 'success');
+                
+                // Auto-fill the join input with the new room code
+                const joinInput = document.getElementById('testRoomCode');
+                if (joinInput) joinInput.value = gameState.room;
+            } catch (error) {
+                resultDiv.innerHTML = `<span style="color: red;">❌ Error: ${error.message}</span>`;
+                resultDiv.className = 'test-section error';
+                log(`Room creation failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testJoinRoom() {
+            const resultDiv = document.getElementById('joinResult');
+            const roomCode = document.getElementById('testRoomCode').value.toUpperCase();
+            const username = document.getElementById('testJoinUsername').value;
+            
+            if (!roomCode || roomCode.length !== 6) {
+                resultDiv.innerHTML = '<span style="color: red;">Please enter a valid 6-character room code</span>';
+                return;
+            }
+            
+            if (!username) {
+                resultDiv.innerHTML = '<span style="color: red;">Please enter a username</span>';
+                return;
+            }
+            
+            resultDiv.innerHTML = 'Joining room...';
+            
+            try {
+                // Reset game state for join test
+                GameStateManager.reset();
+                gameState.pendingUsername = username;
+                
+                await MultiplayerManager.joinRoom();
+                
+                resultDiv.innerHTML = `
+                    <span style="color: green;">✅ Joined room successfully!</span><br>
+                    Room Code: <strong>${gameState.room}</strong><br>
+                    Players: ${gameState.players.length}<br>
+                    Connection: ${ConnectionManager.status}
+                `;
+                resultDiv.className = 'test-section success';
+                
+                log(`Joined room: ${gameState.room} with ${gameState.players.length} players`, 'success');
+            } catch (error) {
+                resultDiv.innerHTML = `<span style="color: red;">❌ Error: ${error.message}</span>`;
+                resultDiv.className = 'test-section error';
+                log(`Room join failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testPlayerSync() {
+            const resultDiv = document.getElementById('syncResult');
+            
+            if (!gameState.room) {
+                resultDiv.innerHTML = '<span style="color: red;">No active room. Create or join a room first.</span>';
+                return;
+            }
+            
+            resultDiv.innerHTML = 'Syncing players...';
+            
+            try {
+                await MultiplayerManager.syncPlayersFromDatabase();
+                
+                resultDiv.innerHTML = `
+                    <span style="color: green;">✅ Player sync completed!</span><br>
+                    Room: ${gameState.room}<br>
+                    Players: ${gameState.players.length}<br>
+                    Player Names: ${gameState.players.map(p => p.name).join(', ')}
+                `;
+                resultDiv.className = 'test-section success';
+                
+                log(`Player sync: ${gameState.players.length} players`, 'success');
+            } catch (error) {
+                resultDiv.innerHTML = `<span style="color: red;">❌ Error: ${error.message}</span>`;
+                resultDiv.className = 'test-section error';
+                log(`Player sync failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            log('Test page loaded', 'info');
+            log('Testing connection automatically...', 'info');
+            testConnection();
+        });
+    </script>
+</body>
+</html> 
